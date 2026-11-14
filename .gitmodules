@@ -1,0 +1,3 @@
+[submodule "rtl/cpu/hazard3"]
+	path = rtl/cpu/hazard3
+	url = https://github.com/Wren6991/Hazard3
