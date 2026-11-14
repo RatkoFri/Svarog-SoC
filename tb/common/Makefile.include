@@ -1,0 +1,76 @@
+# Shared cocotb/Verilator settings, included by every tb/**/Makefile.
+# Usage in a leaf Makefile:
+#   TOPLEVEL_DIR := $(abspath ../../..)
+#   include $(TOPLEVEL_DIR)/tb/common/Makefile.include
+#
+# Options:
+#   WAVES=1   enable waveform tracing; dump.vcd is written into the test directory
+#             (use a fresh/clean SIM_BUILD when toggling, the flags change)
+
+SIM            ?= verilator
+TOPLEVEL_LANG  ?= verilog
+
+# shared Python testbench utilities (apb_master.py, apb.py, socmap.py)
+export PYTHONPATH := $(TOPLEVEL_DIR)/tb/common:$(PYTHONPATH)
+
+# ---------------------------------------------------------------------
+# Source lists, so every testbench names the design the same way.
+# A leaf Makefile picks what its DUT needs, e.g.
+#   VERILOG_SOURCES = $(PKG_SOURCES) $(BUS_SOURCES)
+# ---------------------------------------------------------------------
+RTL_DIR      := $(TOPLEVEL_DIR)/rtl
+HAZARD3_DIR  := $(RTL_DIR)/cpu/hazard3/hdl
+
+PKG_SOURCES    := $(TOPLEVEL_DIR)/config/svarog_soc_pkg.sv
+# Hazard3 from its own file list, plus the lint waiver and our adapter.
+# Anything using CPU_SOURCES must also add $(CPU_ARGS) to EXTRA_ARGS.
+CPU_SOURCES    := $(TOPLEVEL_DIR)/config/cpu.vlt \
+                  $(addprefix $(HAZARD3_DIR)/,$(shell sed -n 's/^file //p' \
+                    $(HAZARD3_DIR)/hazard3.f 2>/dev/null)) \
+                  $(RTL_DIR)/cpu/cpu.sv
+CPU_ARGS       := -I$(HAZARD3_DIR)
+BUS_SOURCES    := $(RTL_DIR)/interconnect/ahb_to_apb.sv \
+                  $(RTL_DIR)/interconnect/apb_decoder.sv \
+                  $(RTL_DIR)/interconnect/apb_mux.sv
+MEM_SOURCES    := $(RTL_DIR)/mem/sync_single_port_RAM.sv \
+                  $(RTL_DIR)/mem/apb_ram.sv
+PERIPH_SOURCES := $(RTL_DIR)/periph/uart_tx.sv \
+                  $(RTL_DIR)/periph/uart_rx.sv \
+                  $(RTL_DIR)/periph/uart.sv \
+                  $(RTL_DIR)/periph/timer.sv \
+                  $(RTL_DIR)/periph/gpio.sv
+SOC_SOURCES    := $(PKG_SOURCES) $(CPU_SOURCES) $(BUS_SOURCES) $(MEM_SOURCES) \
+                  $(PERIPH_SOURCES) $(RTL_DIR)/top/svarog_soc.sv
+
+ifeq ($(wildcard $(HAZARD3_DIR)/hazard3.f),)
+  $(warning Hazard3 submodule missing: run `git submodule update --init`)
+endif
+
+WAVES ?= 0
+ifeq ($(WAVES),1)
+  EXTRA_ARGS += --trace --trace-structs
+endif
+
+EXTRA_ARGS += -Wall
+EXTRA_ARGS += -Wno-DECLFILENAME
+
+COCOTB_HDL_TIMEUNIT      = 1ns
+COCOTB_HDL_TIMEPRECISION = 1ps
+
+# Workaround for Verilator packages that ship verilated.mk with an empty
+# CFG_CXXFLAGS_PCH_I (seen in the pip wheel). The precompiled header is
+# then handed to the compiler as a plain input file instead of via
+# -include, and the C++ build fails once a design is large enough to use
+# a PCH — the SoC testbench hits it, the unit ones do not. Only applied
+# when that variable is actually empty, so a correctly packaged
+# Verilator is left alone.
+VERILATOR_ROOT_DIR := $(shell verilator --getenv VERILATOR_ROOT 2>/dev/null)
+ifneq ($(wildcard $(VERILATOR_ROOT_DIR)/include/verilated.mk),)
+  PCH_I_EMPTY := $(shell grep -c '^CFG_CXXFLAGS_PCH_I *= *$$' \
+                   $(VERILATOR_ROOT_DIR)/include/verilated.mk 2>/dev/null)
+  ifeq ($(PCH_I_EMPTY),1)
+    BUILD_ARGS += CFG_CXXFLAGS_PCH_I=-include
+  endif
+endif
+
+include $(shell cocotb-config --makefiles)/Makefile.sim

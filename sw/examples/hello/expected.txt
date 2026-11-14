@@ -1,0 +1,5 @@
+Svarog
+counter=7
+bss=0
+sum=55
+hex=deadbeef

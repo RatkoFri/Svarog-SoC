@@ -1,0 +1,7 @@
+`verilator_config
+// Hazard3 (rtl/cpu/hazard3, git submodule) is third-party Verilog that is
+// instantiated as-is and never edited. Its coding style is not the
+// project standard, so lint warnings for the submodule are waived and
+// -Wall stays meaningful for the rest of the tree. The adapter
+// rtl/cpu/cpu.sv is NOT waived and must stay clean.
+lint_off -file "*rtl/cpu/hazard3/*"
